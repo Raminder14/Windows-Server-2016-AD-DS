@@ -1,4 +1,4 @@
-# 🖥️ Windows Server 2016 — Active Directory Domain Services (AD DS)
+# 🖥️ Windows Server 2016 — SysAdmin Lab Portfolio
 
 > **SysAdmin Portfolio Project** | Raminder Dhillon  
 > 📧 raminderjitsingh59@gmail.com | 💼 [LinkedIn](https://linkedin.com/in/raminderjeet-dhillon-220445136) | 🐙 [GitHub](https://github.com/Raminder14)
@@ -7,7 +7,7 @@
 
 ## 📋 Project Overview
 
-This project demonstrates the installation and configuration of **Active Directory Domain Services (AD DS)** on Windows Server 2016, including joining a Windows 10 client to the domain. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
+This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, and DHCP Server. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
 
 ---
 
@@ -26,13 +26,13 @@ This project demonstrates the installation and configuration of **Active Directo
 | Server Name | WS2016-LAB |
 | Client Name | DESKTOP-ICOC2JI |
 | Server IP | 192.168.1.10 (Static) |
-| Client IP | 192.168.1.20 (Static) |
+| Client IP | 192.168.1.20 (DHCP Reserved) |
 | Domain | raminder.local |
 | Network Type | VirtualBox Internal Network |
 
 ---
 
-## ✅ What Was Configured
+## ✅ Project 1 — Active Directory Domain Services (AD DS)
 
 ### 1. Base Server Setup
 - Installed Windows Server 2016 with Desktop Experience
@@ -49,8 +49,6 @@ This project demonstrates the installation and configuration of **Active Directo
 - All 5 FSMO roles hosted on WS2016-LAB
 
 ### 3. Organisational Units (OUs)
-Created the following OU structure under `raminder.local`:
-
 ```
 raminder.local
 ├── IT
@@ -59,8 +57,7 @@ raminder.local
 └── Management
 ```
 
-### 4. Users
-Created 3 users in each OU (12 users total):
+### 4. Users (12 Total)
 
 | OU | Users |
 |---|---|
@@ -70,7 +67,6 @@ Created 3 users in each OU (12 users total):
 | Management | Lisa Brown (lbrown), James Taylor (jtaylor), Nancy Martin (nmartin) |
 
 ### 5. Security Groups
-Created one Global Security Group per OU:
 
 | Group | Members |
 |---|---|
@@ -80,6 +76,7 @@ Created one Global Security Group per OU:
 | Management-Team | lbrown, jtaylor, nmartin |
 
 ### 6. Group Policy Objects (GPOs)
+
 | GPO | Linked To | Purpose |
 |---|---|---|
 | Password-Policy | raminder.local | Enforces strong password policy (min 8 chars, 30 day expiry) |
@@ -91,7 +88,10 @@ Created one Global Security Group per OU:
 - A Record: `WS2016-LAB → 192.168.1.10`
 - SRV Records: Kerberos, LDAP, Global Catalog all registered
 
-### 8. Windows 10 Client
+---
+
+## ✅ Project 2 — Windows 10 Client Domain Join
+
 - Installed Windows 10 Pro in VirtualBox
 - Set static IP: `192.168.1.20`
 - DNS pointing to Domain Controller: `192.168.1.10`
@@ -102,9 +102,43 @@ Created one Global Security Group per OU:
 
 ---
 
+## ✅ Project 3 — DHCP Server
+
+### DHCP Configuration
+- Installed DHCP Server role on WS2016-LAB
+- Authorized DHCP Server in Active Directory
+- Created and activated IP scope
+
+### Scope Details
+
+| Setting | Value |
+|---|---|
+| Scope Name | LAN-Scope |
+| Scope ID | 192.168.1.0 |
+| Start Range | 192.168.1.50 |
+| End Range | 192.168.1.100 |
+| Subnet Mask | 255.255.255.0 |
+| Default Gateway | 192.168.1.1 |
+| DNS Server | 192.168.1.10 |
+| DNS Domain | raminder.local |
+| Lease Duration | 8 days |
+| Exclusion Range | 192.168.1.1 — 192.168.1.49 |
+
+### DHCP Reservation
+| Setting | Value |
+|---|---|
+| Reserved IP | 192.168.1.20 |
+| Client MAC | 08-00-27-df-ad-57 |
+| Description | Win10-Client Reservation |
+
+### DHCP Test Result
+Windows 10 client successfully obtained IP `192.168.1.20` from DHCP Server `192.168.1.10` with lease obtained April 7, 2026.
+
+---
+
 ## 💻 Key PowerShell Commands Used
 
-### Server Side:
+### AD DS:
 ```powershell
 # Install AD DS Role
 Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
@@ -130,13 +164,9 @@ New-GPLink -Name "Password-Policy" -Target "DC=raminder,DC=local"
 
 # Verify DNS
 Resolve-DnsName "WS2016-LAB.raminder.local"
-
-# Verify Domain
-Get-ADDomain
-Get-ADDomainController
 ```
 
-### Client Side:
+### Windows 10 Domain Join:
 ```powershell
 # Join domain
 Add-Computer -DomainName "raminder.local" -Credential RAMINDER\Administrator -Restart
@@ -145,6 +175,29 @@ Add-Computer -DomainName "raminder.local" -Credential RAMINDER\Administrator -Re
 systeminfo | findstr /B /C:"Domain"
 $env:LOGONSERVER
 whoami
+```
+
+### DHCP Server:
+```powershell
+# Install DHCP Role
+Install-WindowsFeature -Name DHCP -IncludeAllSubFeature -IncludeManagementTools
+
+# Authorize DHCP in AD
+Import-Module DHCPServer
+Add-DhcpServerInDC -DnsName "WS2016-LAB.raminder.local" -IPAddress 192.168.1.10
+
+# Create Scope
+Add-DhcpServerv4Scope -Name "LAN-Scope" -StartRange 192.168.1.50 -EndRange 192.168.1.100 -SubnetMask 255.255.255.0 -State Active
+
+# Set Options
+Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -Router 192.168.1.1
+Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -DnsServer 192.168.1.10 -DnsDomain "raminder.local"
+
+# Add Exclusion
+Add-DhcpServerv4ExclusionRange -ScopeId 192.168.1.0 -StartRange 192.168.1.1 -EndRange 192.168.1.49
+
+# Add Reservation
+Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -ClientId "08-00-27-DF-AD-57" -Description "Win10-Client Reservation"
 ```
 
 ---
@@ -166,15 +219,19 @@ whoami
 | 11 | ![Desktop GPO](screenshots/11-GPO-Desktop-Lockdown.png) | Desktop Lockdown GPO |
 | 12 | ![DNS Zone](screenshots/12-DNS-Forward-Lookup-Zone.png) | DNS Forward Lookup Zone |
 | 13 | ![Domain Join](screenshots/13-Win10-Domain-Join-Verified.png) | Windows 10 domain join verified |
-| 14 | ![System Properties](screenshots/14-Win10-System-Properties.png) | Windows 10 system properties showing domain |
-| 15 | ![AD Computers](screenshots/15-Win10-In-AD-Computers.png) | Windows 10 client in AD Computers container |
-| 16 | ![Domain User Login](screenshots/16-Win10-Domain-User-Login.png) | Domain user jsmith logged into Windows 10 |
+| 14 | ![System Properties](screenshots/14-Win10-System-Properties.png) | Windows 10 system properties |
+| 15 | ![AD Computers](screenshots/15-Win10-In-AD-Computers.png) | Windows 10 client in AD Computers |
+| 16 | ![Domain User Login](screenshots/16-Win10-Domain-User-Login.png) | Domain user jsmith logged in |
+| 17 | ![DHCP IPConfig](screenshots/17-DHCP-Win10-IPConfig.png) | Windows 10 DHCP lease confirmed |
+| 18 | ![DHCP Lease](screenshots/18-DHCP-Active-Lease.png) | Active DHCP lease in DHCP Manager |
+| 19 | ![DHCP Reservation](screenshots/19-DHCP-Reservation.png) | DHCP reservation for Win10 client |
 
 ---
 
 ## 📚 References
 - [Server Academy](https://www.serveracademy.com/)
 - [Microsoft Docs — AD DS](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/virtual-dc/active-directory-domain-services-overview)
+- [Microsoft Docs — DHCP](https://docs.microsoft.com/en-us/windows-server/networking/technologies/dhcp/dhcp-top)
 
 ---
 
