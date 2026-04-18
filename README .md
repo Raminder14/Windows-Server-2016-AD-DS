@@ -7,7 +7,7 @@
 
 ## 📋 Project Overview
 
-This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, DHCP Server, and File Server with NTFS permissions. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
+This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, DHCP Server, File Server with NTFS permissions, and DNS Deep Dive. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
 
 ---
 
@@ -82,7 +82,7 @@ raminder.local
 | Password-Policy | raminder.local | Enforces strong password policy (min 8 chars, 30 day expiry) |
 | Desktop-Lockdown | HR, Finance OUs | Disables Task Manager and Control Panel |
 
-### 7. DNS
+### 7. DNS Forward Lookup Zone
 - DNS role installed automatically with AD DS
 - Forward Lookup Zone: `raminder.local`
 - A Record: `WS2016-LAB → 192.168.1.10`
@@ -132,7 +132,6 @@ raminder.local
 ## ✅ Project 4 — File Server
 
 ### Shared Folders
-Created department shares on `C:\Shares\` and shared over the network:
 
 | Share Name | Path | Description |
 |---|---|---|
@@ -141,8 +140,7 @@ Created department shares on `C:\Shares\` and shared over the network:
 | Finance | C:\Shares\Finance | Finance Department Share |
 | Management | C:\Shares\Management | Management Department Share |
 
-### NTFS Permissions
-Each department group has Full Control over their own folder only:
+### NTFS & Share Permissions
 
 | Folder | Group | Permission |
 |---|---|---|
@@ -151,14 +149,6 @@ Each department group has Full Control over their own folder only:
 | C:\Shares\Finance | RAMINDER\Finance-Team | Full Control |
 | C:\Shares\Management | RAMINDER\Management-Team | Full Control |
 
-### Share Permissions
-| Share | Group | Access |
-|---|---|---|
-| IT | RAMINDER\IT-Team | Full |
-| HR | RAMINDER\HR-Team | Full |
-| Finance | RAMINDER\Finance-Team | Full |
-| Management | RAMINDER\Management-Team | Full |
-
 ### Access Test
 - Logged into Win10-Client as `RAMINDER\jsmith` (IT-Team member)
 - Successfully created file on `\\WS2016-LAB\IT` share
@@ -166,82 +156,86 @@ Each department group has Full Control over their own folder only:
 
 ---
 
+## ✅ Project 5 — DNS Deep Dive
+
+### Reverse Lookup Zone
+- Created Reverse Lookup Zone for `192.168.1.0/24`
+- Zone Name: `1.168.192.in-addr.arpa`
+- Zone Type: Primary, AD Integrated
+
+### PTR Records
+
+| IP Address | Hostname | Status |
+|---|---|---|
+| 192.168.1.10 | WS2016-LAB.raminder.local | ✅ |
+| 192.168.1.20 | DESKTOP-ICOC2JI.raminder.local | ✅ |
+
+### Custom A Record
+| Name | IP Address |
+|---|---|
+| fileserver.raminder.local | 192.168.1.10 |
+
+### DNS Resolution Tests
+- `Resolve-DnsName 192.168.1.10` → WS2016-LAB.raminder.local ✅
+- `Resolve-DnsName 192.168.1.20` → DESKTOP-ICOC2JI.raminder.local ✅
+- `Resolve-DnsName fileserver.raminder.local` → 192.168.1.10 ✅
+
+---
+
 ## 💻 Key PowerShell Commands Used
 
 ### AD DS:
 ```powershell
-# Install AD DS Role
 Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
-
-# Promote to Domain Controller
 Install-ADDSForest -DomainName "raminder.local" -DomainNetbiosName "RAMINDER" -ForestMode "WinThreshold" -DomainMode "WinThreshold" -InstallDns:$true -Force:$true
-
-# Create OUs
 New-ADOrganizationalUnit -Name "IT" -Path "DC=raminder,DC=local"
-
-# Create Users
 New-ADUser -Name "John Smith" -SamAccountName "jsmith" -UserPrincipalName "jsmith@raminder.local" -Path "OU=IT,DC=raminder,DC=local" -AccountPassword (ConvertTo-SecureString "Admin@2016" -AsPlainText -Force) -Enabled $true
-
-# Create Security Groups
 New-ADGroup -Name "IT-Team" -GroupScope Global -GroupCategory Security -Path "OU=IT,DC=raminder,DC=local"
-
-# Add Users to Groups
 Add-ADGroupMember -Identity "IT-Team" -Members "jsmith","dlee","edavis"
-
-# Create GPO
 New-GPO -Name "Password-Policy"
 New-GPLink -Name "Password-Policy" -Target "DC=raminder,DC=local"
 ```
 
 ### DHCP Server:
 ```powershell
-# Install DHCP Role
 Install-WindowsFeature -Name DHCP -IncludeAllSubFeature -IncludeManagementTools
-
-# Authorize DHCP in AD
 Import-Module DHCPServer
 Add-DhcpServerInDC -DnsName "WS2016-LAB.raminder.local" -IPAddress 192.168.1.10
-
-# Create Scope
 Add-DhcpServerv4Scope -Name "LAN-Scope" -StartRange 192.168.1.50 -EndRange 192.168.1.100 -SubnetMask 255.255.255.0 -State Active
-
-# Set Options
 Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -Router 192.168.1.1
 Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -DnsServer 192.168.1.10 -DnsDomain "raminder.local"
-
-# Add Exclusion and Reservation
 Add-DhcpServerv4ExclusionRange -ScopeId 192.168.1.0 -StartRange 192.168.1.1 -EndRange 192.168.1.49
 Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -ClientId "08-00-27-DF-AD-57" -Description "Win10-Client Reservation"
 ```
 
 ### File Server:
 ```powershell
-# Install File Server Role
 Install-WindowsFeature -Name FS-FileServer -IncludeManagementTools
-
-# Create Folders
 New-Item -Path "C:\Shares\IT" -ItemType Directory
-New-Item -Path "C:\Shares\HR" -ItemType Directory
-New-Item -Path "C:\Shares\Finance" -ItemType Directory
-New-Item -Path "C:\Shares\Management" -ItemType Directory
-
-# Create Shares
 New-SmbShare -Name "IT" -Path "C:\Shares\IT" -Description "IT Department Share"
-New-SmbShare -Name "HR" -Path "C:\Shares\HR" -Description "HR Department Share"
-New-SmbShare -Name "Finance" -Path "C:\Shares\Finance" -Description "Finance Department Share"
-New-SmbShare -Name "Management" -Path "C:\Shares\Management" -Description "Management Department Share"
-
-# Set NTFS Permissions
 $acl = Get-Acl "C:\Shares\IT"
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule("RAMINDER\IT-Team","FullControl","ContainerInherit,ObjectInherit","None","Allow")
 $acl.SetAccessRule($rule)
 Set-Acl "C:\Shares\IT" $acl
-
-# Set Share Permissions
 Grant-SmbShareAccess -Name "IT" -AccountName "RAMINDER\IT-Team" -AccessRight Full -Force
-Grant-SmbShareAccess -Name "HR" -AccountName "RAMINDER\HR-Team" -AccessRight Full -Force
-Grant-SmbShareAccess -Name "Finance" -AccountName "RAMINDER\Finance-Team" -AccessRight Full -Force
-Grant-SmbShareAccess -Name "Management" -AccountName "RAMINDER\Management-Team" -AccessRight Full -Force
+```
+
+### DNS Deep Dive:
+```powershell
+# Create Reverse Lookup Zone
+Add-DnsServerPrimaryZone -NetworkId "192.168.1.0/24" -ReplicationScope "Forest"
+
+# Add PTR Records
+Add-DnsServerResourceRecordPtr -ZoneName "1.168.192.in-addr.arpa" -Name "10" -PtrDomainName "WS2016-LAB.raminder.local"
+Add-DnsServerResourceRecordPtr -ZoneName "1.168.192.in-addr.arpa" -Name "20" -PtrDomainName "DESKTOP-ICOC2JI.raminder.local"
+
+# Add Custom A Record
+Add-DnsServerResourceRecordA -ZoneName "raminder.local" -Name "fileserver" -IPv4Address "192.168.1.10"
+
+# Test Resolution
+Resolve-DnsName 192.168.1.10
+Resolve-DnsName 192.168.1.20
+Resolve-DnsName "fileserver.raminder.local"
 ```
 
 ---
@@ -272,6 +266,9 @@ Grant-SmbShareAccess -Name "Management" -AccountName "RAMINDER\Management-Team" 
 | 20 | ![File Share Access](screenshots/20-FileServer-IT-Share-Access.png) | jsmith accessing IT share |
 | 21 | ![Shares List](screenshots/21-FileServer-Shares-List.png) | All shares in Server Manager |
 | 22 | ![NTFS Permissions](screenshots/22-FileServer-NTFS-Permissions.png) | NTFS permissions on IT folder |
+| 23 | ![Reverse Lookup](screenshots/23-DNS-Reverse-Lookup-Zone.png) | Reverse Lookup Zone with PTR records |
+| 24 | ![Custom A Record](screenshots/24-DNS-Custom-A-Record.png) | Custom A record in DNS Manager |
+| 25 | ![DNS Test](screenshots/25-DNS-Resolution-Test.png) | DNS resolution tests in PowerShell |
 
 ---
 
@@ -280,6 +277,7 @@ Grant-SmbShareAccess -Name "Management" -AccountName "RAMINDER\Management-Team" 
 - [Microsoft Docs — AD DS](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/virtual-dc/active-directory-domain-services-overview)
 - [Microsoft Docs — DHCP](https://docs.microsoft.com/en-us/windows-server/networking/technologies/dhcp/dhcp-top)
 - [Microsoft Docs — File Server](https://docs.microsoft.com/en-us/windows-server/storage/fsrm/fsrm-overview)
+- [Microsoft Docs — DNS](https://docs.microsoft.com/en-us/windows-server/networking/dns/dns-top)
 
 ---
 
