@@ -1,0 +1,397 @@
+# 🖥️ Windows Server 2016 — SysAdmin Lab Portfolio
+
+> **SysAdmin Portfolio Project** | Raminder Dhillon  
+> 📧 raminderjitsingh59@gmail.com | 💼 [LinkedIn](https://linkedin.com/in/raminderjeet-dhillon-220445136) | 🐙 [GitHub](https://github.com/Raminder14)
+
+---
+
+## 📋 Project Overview
+
+This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, DHCP Server, File Server with NTFS permissions, DNS Deep Dive, Windows Server Backup, Remote Desktop Services, and Audit Policy. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
+
+---
+
+## 🛠️ Lab Environment
+
+| Component | Details |
+|---|---|
+| Host OS | Linux Mint |
+| Virtualization | Oracle VirtualBox 7.2.6 |
+| Server OS | Windows Server 2016 Standard Evaluation (Desktop Experience) |
+| Client OS | Windows 10 Pro |
+| Server RAM | 4GB |
+| Client RAM | 2GB |
+| Server Disk | 50GB |
+| Client Disk | 25GB |
+| Server Name | WS2016-LAB |
+| Client Name | DESKTOP-ICOC2JI |
+| Server IP | 192.168.1.10 (Static) |
+| Client IP | 192.168.1.20 (DHCP Reserved) |
+| Domain | raminder.local |
+| Network Type | VirtualBox Internal Network |
+
+---
+
+## ✅ Project 1 — Active Directory Domain Services (AD DS)
+
+### 1. Base Server Setup
+- Installed Windows Server 2016 with Desktop Experience
+- Set static IP address: `192.168.1.10`
+- Renamed server to `WS2016-LAB`
+- Installed VirtualBox Guest Additions
+
+### 2. Active Directory Domain Services
+- Installed AD DS role using PowerShell
+- Promoted server to **Domain Controller**
+- Created new forest and domain: `raminder.local`
+- NetBIOS Name: `RAMINDER`
+- Domain Functional Level: Windows Server 2016
+- All 5 FSMO roles hosted on WS2016-LAB
+
+### 3. Organisational Units (OUs)
+```
+raminder.local
+├── IT
+├── HR
+├── Finance
+└── Management
+```
+
+### 4. Users (12 Total)
+
+| OU | Users |
+|---|---|
+| IT | John Smith (jsmith), David Lee (dlee), Emma Davis (edavis) |
+| HR | Sarah Jones (sjones), Karen White (kwhite), Paul Harris (pharris) |
+| Finance | Mike Wilson (mwilson), Rachel Green (rgreen), Tom Clark (tclark) |
+| Management | Lisa Brown (lbrown), James Taylor (jtaylor), Nancy Martin (nmartin) |
+
+### 5. Security Groups
+
+| Group | Members |
+|---|---|
+| IT-Team | jsmith, dlee, edavis |
+| HR-Team | sjones, kwhite, pharris |
+| Finance-Team | mwilson, rgreen, tclark |
+| Management-Team | lbrown, jtaylor, nmartin |
+
+### 6. Group Policy Objects (GPOs)
+
+| GPO | Linked To | Purpose |
+|---|---|---|
+| Password-Policy | raminder.local | Enforces strong password policy (min 8 chars, 30 day expiry) |
+| Desktop-Lockdown | HR, Finance OUs | Disables Task Manager and Control Panel |
+
+### 7. DNS Forward Lookup Zone
+- DNS role installed automatically with AD DS
+- Forward Lookup Zone: `raminder.local`
+- A Record: `WS2016-LAB → 192.168.1.10`
+- SRV Records: Kerberos, LDAP, Global Catalog all registered
+
+---
+
+## ✅ Project 2 — Windows 10 Client Domain Join
+
+- Installed Windows 10 Pro in VirtualBox
+- Set static IP: `192.168.1.20`
+- DNS pointing to Domain Controller: `192.168.1.10`
+- Successfully joined to `raminder.local` domain
+- Verified domain login with user `RAMINDER\jsmith`
+- Logon server confirmed as `\\WS2016-LAB`
+- Client visible in AD Computers container
+
+---
+
+## ✅ Project 3 — DHCP Server
+
+### Scope Details
+
+| Setting | Value |
+|---|---|
+| Scope Name | LAN-Scope |
+| Scope ID | 192.168.1.0 |
+| Start Range | 192.168.1.50 |
+| End Range | 192.168.1.100 |
+| Subnet Mask | 255.255.255.0 |
+| Default Gateway | 192.168.1.1 |
+| DNS Server | 192.168.1.10 |
+| DNS Domain | raminder.local |
+| Lease Duration | 8 days |
+| Exclusion Range | 192.168.1.1 — 192.168.1.49 |
+
+### DHCP Reservation
+
+| Setting | Value |
+|---|---|
+| Reserved IP | 192.168.1.20 |
+| Client MAC | 08-00-27-df-ad-57 |
+| Description | Win10-Client Reservation |
+
+---
+
+## ✅ Project 4 — File Server
+
+### Shared Folders
+
+| Share Name | Path | Description |
+|---|---|---|
+| IT | C:\Shares\IT | IT Department Share |
+| HR | C:\Shares\HR | HR Department Share |
+| Finance | C:\Shares\Finance | Finance Department Share |
+| Management | C:\Shares\Management | Management Department Share |
+
+### NTFS & Share Permissions
+
+| Folder | Group | Permission |
+|---|---|---|
+| C:\Shares\IT | RAMINDER\IT-Team | Full Control |
+| C:\Shares\HR | RAMINDER\HR-Team | Full Control |
+| C:\Shares\Finance | RAMINDER\Finance-Team | Full Control |
+| C:\Shares\Management | RAMINDER\Management-Team | Full Control |
+
+### Access Test
+- Logged into Win10-Client as `RAMINDER\jsmith` (IT-Team member)
+- Successfully created file on `\\WS2016-LAB\IT` share
+- Confirmed NTFS and Share permissions working correctly
+
+---
+
+## ✅ Project 5 — DNS Deep Dive
+
+### Reverse Lookup Zone
+- Created Reverse Lookup Zone for `192.168.1.0/24`
+- Zone Name: `1.168.192.in-addr.arpa`
+- Zone Type: Primary, AD Integrated
+
+### PTR Records
+
+| IP Address | Hostname | Status |
+|---|---|---|
+| 192.168.1.10 | WS2016-LAB.raminder.local | ✅ |
+| 192.168.1.20 | DESKTOP-ICOC2JI.raminder.local | ✅ |
+
+### Custom A Record
+| Name | IP Address |
+|---|---|
+| fileserver.raminder.local | 192.168.1.10 |
+
+### DNS Resolution Tests
+- `Resolve-DnsName 192.168.1.10` → WS2016-LAB.raminder.local ✅
+- `Resolve-DnsName 192.168.1.20` → DESKTOP-ICOC2JI.raminder.local ✅
+- `Resolve-DnsName fileserver.raminder.local` → 192.168.1.10 ✅
+
+---
+
+## ✅ Project 6 — Windows Server Backup
+
+### Backup Configuration
+- Installed Windows Server Backup feature
+- Created backup share: `\\WS2016-LAB\BackupShare`
+- Backed up `C:\Shares` folder to network share
+
+### Backup Job Result
+
+| Setting | Value |
+|---|---|
+| Job Type | Backup |
+| Start Time | 4/18/2026 2:20 AM |
+| End Time | 4/18/2026 2:21 AM |
+| Job State | Completed |
+| HResult | 0 (No errors) |
+| Duration | 1 minute |
+
+---
+
+## ✅ Project 7 — Remote Desktop Services (RDS)
+
+### RDP Configuration
+- Enabled Remote Desktop via registry on WS2016-LAB
+- Enabled Remote Desktop firewall rules
+- Disabled Network Level Authentication (NLA) for lab compatibility
+- Added IT-Team to Remote Desktop Users group
+- Fixed CredSSP encryption policy on both server and client
+
+### RDP Settings Applied
+
+| Setting | Value |
+|---|---|
+| fDenyTSConnections | 0 (Allow) |
+| UserAuthentication (NLA) | 0 (Disabled) |
+| Firewall Rule | Remote Desktop Enabled |
+| Allowed Group | RAMINDER\IT-Team |
+
+### RDP Test Result
+- Connected from Win10-Client to WS2016-LAB via RDP
+- Logged in as `RAMINDER\jsmith` successfully
+- Active RDP session verified with `query session`
+
+---
+
+## ✅ Project 8 — Audit Policy
+
+### Audit Categories Configured
+
+| Category | Setting |
+|---|---|
+| Logon | Success and Failure |
+| File System | Success and Failure |
+| Audit Policy Change | Success and Failure |
+| User Account Management | Success and Failure |
+| System Integrity | Success and Failure |
+
+### Key Event IDs Monitored
+
+| Event ID | Meaning |
+|---|---|
+| 4624 | Successful logon |
+| 4634 | Account logged off |
+| 4625 | Failed logon attempt |
+| 4672 | Special privileges assigned |
+| 4720 | User account created |
+| 4726 | User account deleted |
+
+### Audit Log Results
+- Verified logon events from DESKTOP-ICOC2JI (192.168.1.20)
+- Kerberos authentication confirmed in security logs
+- Network logon Type 3 recorded for domain authentication
+- Special privileges assigned to Administrator sessions logged
+
+---
+
+## 💻 Key PowerShell Commands Used
+
+### AD DS:
+```powershell
+Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+Install-ADDSForest -DomainName "raminder.local" -DomainNetbiosName "RAMINDER" -ForestMode "WinThreshold" -DomainMode "WinThreshold" -InstallDns:$true -Force:$true
+New-ADOrganizationalUnit -Name "IT" -Path "DC=raminder,DC=local"
+New-ADUser -Name "John Smith" -SamAccountName "jsmith" -UserPrincipalName "jsmith@raminder.local" -Path "OU=IT,DC=raminder,DC=local" -AccountPassword (ConvertTo-SecureString "Admin@2016" -AsPlainText -Force) -Enabled $true
+New-ADGroup -Name "IT-Team" -GroupScope Global -GroupCategory Security -Path "OU=IT,DC=raminder,DC=local"
+Add-ADGroupMember -Identity "IT-Team" -Members "jsmith","dlee","edavis"
+New-GPO -Name "Password-Policy"
+New-GPLink -Name "Password-Policy" -Target "DC=raminder,DC=local"
+```
+
+### DHCP Server:
+```powershell
+Install-WindowsFeature -Name DHCP -IncludeAllSubFeature -IncludeManagementTools
+Import-Module DHCPServer
+Add-DhcpServerInDC -DnsName "WS2016-LAB.raminder.local" -IPAddress 192.168.1.10
+Add-DhcpServerv4Scope -Name "LAN-Scope" -StartRange 192.168.1.50 -EndRange 192.168.1.100 -SubnetMask 255.255.255.0 -State Active
+Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -Router 192.168.1.1
+Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -DnsServer 192.168.1.10 -DnsDomain "raminder.local"
+Add-DhcpServerv4ExclusionRange -ScopeId 192.168.1.0 -StartRange 192.168.1.1 -EndRange 192.168.1.49
+Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -ClientId "08-00-27-DF-AD-57" -Description "Win10-Client Reservation"
+```
+
+### File Server:
+```powershell
+Install-WindowsFeature -Name FS-FileServer -IncludeManagementTools
+New-Item -Path "C:\Shares\IT" -ItemType Directory
+New-SmbShare -Name "IT" -Path "C:\Shares\IT" -Description "IT Department Share"
+$acl = Get-Acl "C:\Shares\IT"
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule("RAMINDER\IT-Team","FullControl","ContainerInherit,ObjectInherit","None","Allow")
+$acl.SetAccessRule($rule)
+Set-Acl "C:\Shares\IT" $acl
+Grant-SmbShareAccess -Name "IT" -AccountName "RAMINDER\IT-Team" -AccessRight Full -Force
+```
+
+### DNS Deep Dive:
+```powershell
+Add-DnsServerPrimaryZone -NetworkId "192.168.1.0/24" -ReplicationScope "Forest"
+Add-DnsServerResourceRecordPtr -ZoneName "1.168.192.in-addr.arpa" -Name "10" -PtrDomainName "WS2016-LAB.raminder.local"
+Add-DnsServerResourceRecordPtr -ZoneName "1.168.192.in-addr.arpa" -Name "20" -PtrDomainName "DESKTOP-ICOC2JI.raminder.local"
+Add-DnsServerResourceRecordA -ZoneName "raminder.local" -Name "fileserver" -IPv4Address "192.168.1.10"
+```
+
+### Windows Server Backup:
+```powershell
+Install-WindowsFeature -Name Windows-Server-Backup -IncludeManagementTools
+$policy = New-WBPolicy
+$fileSpec = New-WBFileSpec -FileSpec "C:\Shares"
+Add-WBFileSpec -Policy $policy -FileSpec $fileSpec
+$cred = Get-Credential
+$backupLocation = New-WBBackupTarget -NetworkPath "\\WS2016-LAB\BackupShare" -Credential $cred
+Add-WBBackupTarget -Policy $policy -Target $backupLocation
+Start-WBBackup -Policy $policy
+Get-WBJob -Previous 1
+```
+
+### Remote Desktop Services:
+```powershell
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0
+Restart-Service -Name "TermService" -Force
+net localgroup "Remote Desktop Users" "RAMINDER\IT-Team" /add
+query session
+```
+
+### Audit Policy:
+```powershell
+# Configure audit policy
+auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+auditpol /set /subcategory:"File System" /success:enable /failure:enable
+auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+
+# View all audit settings
+auditpol /get /category:*
+
+# View security event logs
+Get-EventLog -LogName Security -Newest 10 | Select-Object TimeGenerated, EventID, Message | Format-List | Out-File "C:\audit-log.txt"
+```
+
+---
+
+## 📸 Screenshots
+
+| # | Screenshot | Description |
+|---|---|---|
+| 01 | ![OU Structure](screenshots/01-OU-Structure.png) | OU structure in ADUC |
+| 02 | ![IT OU Users](screenshots/02-Users-IT-OU.png) | Users in IT OU |
+| 03 | ![HR OU Users](screenshots/03-Users-HR-OU.png) | Users in HR OU |
+| 04 | ![Finance OU Users](screenshots/04-Users-Finance-OU.png) | Users in Finance OU |
+| 05 | ![Management OU Users](screenshots/05-Users-Management-OU.png) | Users in Management OU |
+| 06 | ![IT Group](screenshots/06-IT-Team-Group-Members.png) | IT-Team group members |
+| 07 | ![HR Group](screenshots/07-HR-Team-Group-Members.png) | HR-Team group members |
+| 08 | ![Finance Group](screenshots/08-Finance-Team-Group-Members.png) | Finance-Team group members |
+| 09 | ![Management Group](screenshots/09-Management-Team-Group-Members.png) | Management-Team group members |
+| 10 | ![Password GPO](screenshots/10-GPO-Password-Policy.png) | Password Policy GPO |
+| 11 | ![Desktop GPO](screenshots/11-GPO-Desktop-Lockdown.png) | Desktop Lockdown GPO |
+| 12 | ![DNS Zone](screenshots/12-DNS-Forward-Lookup-Zone.png) | DNS Forward Lookup Zone |
+| 13 | ![Domain Join](screenshots/13-Win10-Domain-Join-Verified.png) | Windows 10 domain join verified |
+| 14 | ![System Properties](screenshots/14-Win10-System-Properties.png) | Windows 10 system properties |
+| 15 | ![AD Computers](screenshots/15-Win10-In-AD-Computers.png) | Windows 10 client in AD Computers |
+| 16 | ![Domain User Login](screenshots/16-Win10-Domain-User-Login.png) | Domain user jsmith logged in |
+| 17 | ![DHCP IPConfig](screenshots/17-DHCP-Win10-IPConfig.png) | Windows 10 DHCP lease confirmed |
+| 18 | ![DHCP Lease](screenshots/18-DHCP-Active-Lease.png) | Active DHCP lease in DHCP Manager |
+| 19 | ![DHCP Reservation](screenshots/19-DHCP-Reservation.png) | DHCP reservation for Win10 client |
+| 20 | ![File Share Access](screenshots/20-FileServer-IT-Share-Access.png) | jsmith accessing IT share |
+| 21 | ![Shares List](screenshots/21-FileServer-Shares-List.png) | All shares in Server Manager |
+| 22 | ![NTFS Permissions](screenshots/22-FileServer-NTFS-Permissions.png) | NTFS permissions on IT folder |
+| 23 | ![Reverse Lookup](screenshots/23-DNS-Reverse-Lookup-Zone.png) | Reverse Lookup Zone with PTR records |
+| 24 | ![Custom A Record](screenshots/24-DNS-Custom-A-Record.png) | Custom A record in DNS Manager |
+| 25 | ![DNS Test](screenshots/25-DNS-Resolution-Test.png) | DNS resolution tests in PowerShell |
+| 26 | ![Backup Job](screenshots/26-Backup-Job-Completed.png) | Backup job completed successfully |
+| 27 | ![Backup Files](screenshots/27-Backup-Files-Created.png) | Backup files created in BackupShare |
+| 28 | ![RDP Connected](screenshots/28-RDP-Connected-To-Server.png) | RDP connection from Win10 to Server |
+| 29 | ![RDP Session](screenshots/29-RDP-Active-Session.png) | Active RDP session via query session |
+| 30 | ![Event Viewer](screenshots/30-Audit-Event-Viewer-Security-Log.png) | Security log in Event Viewer |
+| 31 | ![Audit Policy](screenshots/31-Audit-Policy-Settings.png) | Audit policy settings in PowerShell |
+
+---
+
+## 📚 References
+- [Server Academy](https://www.serveracademy.com/)
+- [Microsoft Docs — AD DS](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/virtual-dc/active-directory-domain-services-overview)
+- [Microsoft Docs — DHCP](https://docs.microsoft.com/en-us/windows-server/networking/technologies/dhcp/dhcp-top)
+- [Microsoft Docs — File Server](https://docs.microsoft.com/en-us/windows-server/storage/fsrm/fsrm-overview)
+- [Microsoft Docs — DNS](https://docs.microsoft.com/en-us/windows-server/networking/dns/dns-top)
+- [Microsoft Docs — Windows Server Backup](https://docs.microsoft.com/en-us/windows-server/administration/windows-server-backup/windows-server-backup)
+- [Microsoft Docs — Remote Desktop](https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/welcome-to-rds)
+- [Microsoft Docs — Audit Policy](https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-audit-policy-settings)
+
+---
+
+*Built as part of my SysAdmin portfolio. More projects coming soon.*
