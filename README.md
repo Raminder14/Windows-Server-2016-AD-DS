@@ -7,7 +7,7 @@
 
 ## 📋 Project Overview
 
-This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, DHCP Server, File Server with NTFS permissions, DNS Deep Dive, Windows Server Backup, and Remote Desktop Services. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
+This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, DHCP Server, and File Server with NTFS permissions. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
 
 ---
 
@@ -82,7 +82,7 @@ raminder.local
 | Password-Policy | raminder.local | Enforces strong password policy (min 8 chars, 30 day expiry) |
 | Desktop-Lockdown | HR, Finance OUs | Disables Task Manager and Control Panel |
 
-### 7. DNS Forward Lookup Zone
+### 7. DNS
 - DNS role installed automatically with AD DS
 - Forward Lookup Zone: `raminder.local`
 - A Record: `WS2016-LAB → 192.168.1.10`
@@ -132,6 +132,7 @@ raminder.local
 ## ✅ Project 4 — File Server
 
 ### Shared Folders
+Created department shares on `C:\Shares\` and shared over the network:
 
 | Share Name | Path | Description |
 |---|---|---|
@@ -140,7 +141,8 @@ raminder.local
 | Finance | C:\Shares\Finance | Finance Department Share |
 | Management | C:\Shares\Management | Management Department Share |
 
-### NTFS & Share Permissions
+### NTFS Permissions
+Each department group has Full Control over their own folder only:
 
 | Folder | Group | Permission |
 |---|---|---|
@@ -149,6 +151,14 @@ raminder.local
 | C:\Shares\Finance | RAMINDER\Finance-Team | Full Control |
 | C:\Shares\Management | RAMINDER\Management-Team | Full Control |
 
+### Share Permissions
+| Share | Group | Access |
+|---|---|---|
+| IT | RAMINDER\IT-Team | Full |
+| HR | RAMINDER\HR-Team | Full |
+| Finance | RAMINDER\Finance-Team | Full |
+| Management | RAMINDER\Management-Team | Full |
+
 ### Access Test
 - Logged into Win10-Client as `RAMINDER\jsmith` (IT-Team member)
 - Successfully created file on `\\WS2016-LAB\IT` share
@@ -156,164 +166,82 @@ raminder.local
 
 ---
 
-## ✅ Project 5 — DNS Deep Dive
-
-### Reverse Lookup Zone
-- Created Reverse Lookup Zone for `192.168.1.0/24`
-- Zone Name: `1.168.192.in-addr.arpa`
-- Zone Type: Primary, AD Integrated
-
-### PTR Records
-
-| IP Address | Hostname | Status |
-|---|---|---|
-| 192.168.1.10 | WS2016-LAB.raminder.local | ✅ |
-| 192.168.1.20 | DESKTOP-ICOC2JI.raminder.local | ✅ |
-
-### Custom A Record
-| Name | IP Address |
-|---|---|
-| fileserver.raminder.local | 192.168.1.10 |
-
-### DNS Resolution Tests
-- `Resolve-DnsName 192.168.1.10` → WS2016-LAB.raminder.local ✅
-- `Resolve-DnsName 192.168.1.20` → DESKTOP-ICOC2JI.raminder.local ✅
-- `Resolve-DnsName fileserver.raminder.local` → 192.168.1.10 ✅
-
----
-
-## ✅ Project 6 — Windows Server Backup
-
-### Backup Configuration
-- Installed Windows Server Backup feature
-- Created backup share: `\\WS2016-LAB\BackupShare`
-- Backed up `C:\Shares` folder to network share
-
-### Backup Job Result
-
-| Setting | Value |
-|---|---|
-| Job Type | Backup |
-| Start Time | 4/18/2026 2:20 AM |
-| End Time | 4/18/2026 2:21 AM |
-| Job State | Completed |
-| HResult | 0 (No errors) |
-| Duration | 1 minute |
-| Log Path | C:\Windows\Logs\WindowsServerBackup |
-
----
-
-## ✅ Project 7 — Remote Desktop Services (RDS)
-
-### RDP Configuration
-- Enabled Remote Desktop via registry on WS2016-LAB
-- Enabled Remote Desktop firewall rules
-- Disabled Network Level Authentication (NLA) for lab compatibility
-- Added IT-Team to Remote Desktop Users group
-- Fixed CredSSP encryption policy on both server and client
-
-### RDP Settings Applied
-
-| Setting | Value |
-|---|---|
-| fDenyTSConnections | 0 (Allow) |
-| UserAuthentication (NLA) | 0 (Disabled) |
-| Firewall Rule | Remote Desktop Enabled |
-| Allowed Group | RAMINDER\IT-Team |
-
-### RDP Test Result
-- Connected from Win10-Client to WS2016-LAB via RDP
-- Logged in as `RAMINDER\jsmith` successfully
-- Active RDP session verified with `query session`
-
----
-
 ## 💻 Key PowerShell Commands Used
 
 ### AD DS:
 ```powershell
+# Install AD DS Role
 Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+
+# Promote to Domain Controller
 Install-ADDSForest -DomainName "raminder.local" -DomainNetbiosName "RAMINDER" -ForestMode "WinThreshold" -DomainMode "WinThreshold" -InstallDns:$true -Force:$true
+
+# Create OUs
 New-ADOrganizationalUnit -Name "IT" -Path "DC=raminder,DC=local"
+
+# Create Users
 New-ADUser -Name "John Smith" -SamAccountName "jsmith" -UserPrincipalName "jsmith@raminder.local" -Path "OU=IT,DC=raminder,DC=local" -AccountPassword (ConvertTo-SecureString "Admin@2016" -AsPlainText -Force) -Enabled $true
+
+# Create Security Groups
 New-ADGroup -Name "IT-Team" -GroupScope Global -GroupCategory Security -Path "OU=IT,DC=raminder,DC=local"
+
+# Add Users to Groups
 Add-ADGroupMember -Identity "IT-Team" -Members "jsmith","dlee","edavis"
+
+# Create GPO
 New-GPO -Name "Password-Policy"
 New-GPLink -Name "Password-Policy" -Target "DC=raminder,DC=local"
 ```
 
 ### DHCP Server:
 ```powershell
+# Install DHCP Role
 Install-WindowsFeature -Name DHCP -IncludeAllSubFeature -IncludeManagementTools
+
+# Authorize DHCP in AD
 Import-Module DHCPServer
 Add-DhcpServerInDC -DnsName "WS2016-LAB.raminder.local" -IPAddress 192.168.1.10
+
+# Create Scope
 Add-DhcpServerv4Scope -Name "LAN-Scope" -StartRange 192.168.1.50 -EndRange 192.168.1.100 -SubnetMask 255.255.255.0 -State Active
+
+# Set Options
 Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -Router 192.168.1.1
 Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -DnsServer 192.168.1.10 -DnsDomain "raminder.local"
+
+# Add Exclusion and Reservation
 Add-DhcpServerv4ExclusionRange -ScopeId 192.168.1.0 -StartRange 192.168.1.1 -EndRange 192.168.1.49
 Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -ClientId "08-00-27-DF-AD-57" -Description "Win10-Client Reservation"
 ```
 
 ### File Server:
 ```powershell
+# Install File Server Role
 Install-WindowsFeature -Name FS-FileServer -IncludeManagementTools
+
+# Create Folders
 New-Item -Path "C:\Shares\IT" -ItemType Directory
+New-Item -Path "C:\Shares\HR" -ItemType Directory
+New-Item -Path "C:\Shares\Finance" -ItemType Directory
+New-Item -Path "C:\Shares\Management" -ItemType Directory
+
+# Create Shares
 New-SmbShare -Name "IT" -Path "C:\Shares\IT" -Description "IT Department Share"
+New-SmbShare -Name "HR" -Path "C:\Shares\HR" -Description "HR Department Share"
+New-SmbShare -Name "Finance" -Path "C:\Shares\Finance" -Description "Finance Department Share"
+New-SmbShare -Name "Management" -Path "C:\Shares\Management" -Description "Management Department Share"
+
+# Set NTFS Permissions
 $acl = Get-Acl "C:\Shares\IT"
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule("RAMINDER\IT-Team","FullControl","ContainerInherit,ObjectInherit","None","Allow")
 $acl.SetAccessRule($rule)
 Set-Acl "C:\Shares\IT" $acl
+
+# Set Share Permissions
 Grant-SmbShareAccess -Name "IT" -AccountName "RAMINDER\IT-Team" -AccessRight Full -Force
-```
-
-### DNS Deep Dive:
-```powershell
-Add-DnsServerPrimaryZone -NetworkId "192.168.1.0/24" -ReplicationScope "Forest"
-Add-DnsServerResourceRecordPtr -ZoneName "1.168.192.in-addr.arpa" -Name "10" -PtrDomainName "WS2016-LAB.raminder.local"
-Add-DnsServerResourceRecordPtr -ZoneName "1.168.192.in-addr.arpa" -Name "20" -PtrDomainName "DESKTOP-ICOC2JI.raminder.local"
-Add-DnsServerResourceRecordA -ZoneName "raminder.local" -Name "fileserver" -IPv4Address "192.168.1.10"
-Resolve-DnsName 192.168.1.10
-Resolve-DnsName 192.168.1.20
-Resolve-DnsName "fileserver.raminder.local"
-```
-
-### Windows Server Backup:
-```powershell
-Install-WindowsFeature -Name Windows-Server-Backup -IncludeManagementTools
-New-Item -Path "C:\BackupShare" -ItemType Directory
-New-SmbShare -Name "BackupShare" -Path "C:\BackupShare" -FullAccess "RAMINDER\Administrator"
-$policy = New-WBPolicy
-$fileSpec = New-WBFileSpec -FileSpec "C:\Shares"
-Add-WBFileSpec -Policy $policy -FileSpec $fileSpec
-$cred = Get-Credential
-$backupLocation = New-WBBackupTarget -NetworkPath "\\WS2016-LAB\BackupShare" -Credential $cred
-Add-WBBackupTarget -Policy $policy -Target $backupLocation
-Start-WBBackup -Policy $policy
-Get-WBJob -Previous 1
-```
-
-### Remote Desktop Services:
-```powershell
-# Enable RDP
-Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
-Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-# Disable NLA for lab compatibility
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0
-Restart-Service -Name "TermService" -Force
-
-# Fix CredSSP on both VMs
-New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\CredSSP\Parameters" -Force
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\CredSSP\Parameters" -Name "AllowEncryptionOracle" -Value 2 -Force
-
-# Add IT-Team to RDP users
-net localgroup "Remote Desktop Users" "RAMINDER\IT-Team" /add
-
-# Test RDP connection
-mstsc /v:192.168.1.10
-
-# Verify active sessions
-query session
+Grant-SmbShareAccess -Name "HR" -AccountName "RAMINDER\HR-Team" -AccessRight Full -Force
+Grant-SmbShareAccess -Name "Finance" -AccountName "RAMINDER\Finance-Team" -AccessRight Full -Force
+Grant-SmbShareAccess -Name "Management" -AccountName "RAMINDER\Management-Team" -AccessRight Full -Force
 ```
 
 ---
@@ -344,13 +272,6 @@ query session
 | 20 | ![File Share Access](screenshots/20-FileServer-IT-Share-Access.png) | jsmith accessing IT share |
 | 21 | ![Shares List](screenshots/21-FileServer-Shares-List.png) | All shares in Server Manager |
 | 22 | ![NTFS Permissions](screenshots/22-FileServer-NTFS-Permissions.png) | NTFS permissions on IT folder |
-| 23 | ![Reverse Lookup](screenshots/23-DNS-Reverse-Lookup-Zone.png) | Reverse Lookup Zone with PTR records |
-| 24 | ![Custom A Record](screenshots/24-DNS-Custom-A-Record.png) | Custom A record in DNS Manager |
-| 25 | ![DNS Test](screenshots/25-DNS-Resolution-Test.png) | DNS resolution tests in PowerShell |
-| 26 | ![Backup Job](screenshots/26-Backup-Job-Completed.png) | Backup job completed successfully |
-| 27 | ![Backup Files](screenshots/27-Backup-Files-Created.png) | Backup files created in BackupShare |
-| 28 | ![RDP Connected](screenshots/28-RDP-Connected-To-Server.png) | RDP connection from Win10 to Server |
-| 29 | ![RDP Session](screenshots/29-RDP-Active-Session.png) | Active RDP session via query session |
 
 ---
 
@@ -359,9 +280,6 @@ query session
 - [Microsoft Docs — AD DS](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/virtual-dc/active-directory-domain-services-overview)
 - [Microsoft Docs — DHCP](https://docs.microsoft.com/en-us/windows-server/networking/technologies/dhcp/dhcp-top)
 - [Microsoft Docs — File Server](https://docs.microsoft.com/en-us/windows-server/storage/fsrm/fsrm-overview)
-- [Microsoft Docs — DNS](https://docs.microsoft.com/en-us/windows-server/networking/dns/dns-top)
-- [Microsoft Docs — Windows Server Backup](https://docs.microsoft.com/en-us/windows-server/administration/windows-server-backup/windows-server-backup)
-- [Microsoft Docs — Remote Desktop](https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/welcome-to-rds)
 
 ---
 
