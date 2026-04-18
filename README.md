@@ -7,7 +7,7 @@
 
 ## 📋 Project Overview
 
-This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, and DHCP Server. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
+This project demonstrates the installation and configuration of a full Windows Server 2016 lab environment including Active Directory Domain Services (AD DS), Windows 10 client domain join, DHCP Server, and File Server with NTFS permissions. The entire lab was built from scratch in a VirtualBox environment running on Linux Mint.
 
 ---
 
@@ -104,11 +104,6 @@ raminder.local
 
 ## ✅ Project 3 — DHCP Server
 
-### DHCP Configuration
-- Installed DHCP Server role on WS2016-LAB
-- Authorized DHCP Server in Active Directory
-- Created and activated IP scope
-
 ### Scope Details
 
 | Setting | Value |
@@ -125,14 +120,49 @@ raminder.local
 | Exclusion Range | 192.168.1.1 — 192.168.1.49 |
 
 ### DHCP Reservation
+
 | Setting | Value |
 |---|---|
 | Reserved IP | 192.168.1.20 |
 | Client MAC | 08-00-27-df-ad-57 |
 | Description | Win10-Client Reservation |
 
-### DHCP Test Result
-Windows 10 client successfully obtained IP `192.168.1.20` from DHCP Server `192.168.1.10` with lease obtained April 7, 2026.
+---
+
+## ✅ Project 4 — File Server
+
+### Shared Folders
+Created department shares on `C:\Shares\` and shared over the network:
+
+| Share Name | Path | Description |
+|---|---|---|
+| IT | C:\Shares\IT | IT Department Share |
+| HR | C:\Shares\HR | HR Department Share |
+| Finance | C:\Shares\Finance | Finance Department Share |
+| Management | C:\Shares\Management | Management Department Share |
+
+### NTFS Permissions
+Each department group has Full Control over their own folder only:
+
+| Folder | Group | Permission |
+|---|---|---|
+| C:\Shares\IT | RAMINDER\IT-Team | Full Control |
+| C:\Shares\HR | RAMINDER\HR-Team | Full Control |
+| C:\Shares\Finance | RAMINDER\Finance-Team | Full Control |
+| C:\Shares\Management | RAMINDER\Management-Team | Full Control |
+
+### Share Permissions
+| Share | Group | Access |
+|---|---|---|
+| IT | RAMINDER\IT-Team | Full |
+| HR | RAMINDER\HR-Team | Full |
+| Finance | RAMINDER\Finance-Team | Full |
+| Management | RAMINDER\Management-Team | Full |
+
+### Access Test
+- Logged into Win10-Client as `RAMINDER\jsmith` (IT-Team member)
+- Successfully created file on `\\WS2016-LAB\IT` share
+- Confirmed NTFS and Share permissions working correctly
 
 ---
 
@@ -161,20 +191,6 @@ Add-ADGroupMember -Identity "IT-Team" -Members "jsmith","dlee","edavis"
 # Create GPO
 New-GPO -Name "Password-Policy"
 New-GPLink -Name "Password-Policy" -Target "DC=raminder,DC=local"
-
-# Verify DNS
-Resolve-DnsName "WS2016-LAB.raminder.local"
-```
-
-### Windows 10 Domain Join:
-```powershell
-# Join domain
-Add-Computer -DomainName "raminder.local" -Credential RAMINDER\Administrator -Restart
-
-# Verify domain join
-systeminfo | findstr /B /C:"Domain"
-$env:LOGONSERVER
-whoami
 ```
 
 ### DHCP Server:
@@ -193,11 +209,39 @@ Add-DhcpServerv4Scope -Name "LAN-Scope" -StartRange 192.168.1.50 -EndRange 192.1
 Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -Router 192.168.1.1
 Set-DhcpServerv4OptionValue -ScopeId 192.168.1.0 -DnsServer 192.168.1.10 -DnsDomain "raminder.local"
 
-# Add Exclusion
+# Add Exclusion and Reservation
 Add-DhcpServerv4ExclusionRange -ScopeId 192.168.1.0 -StartRange 192.168.1.1 -EndRange 192.168.1.49
-
-# Add Reservation
 Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -ClientId "08-00-27-DF-AD-57" -Description "Win10-Client Reservation"
+```
+
+### File Server:
+```powershell
+# Install File Server Role
+Install-WindowsFeature -Name FS-FileServer -IncludeManagementTools
+
+# Create Folders
+New-Item -Path "C:\Shares\IT" -ItemType Directory
+New-Item -Path "C:\Shares\HR" -ItemType Directory
+New-Item -Path "C:\Shares\Finance" -ItemType Directory
+New-Item -Path "C:\Shares\Management" -ItemType Directory
+
+# Create Shares
+New-SmbShare -Name "IT" -Path "C:\Shares\IT" -Description "IT Department Share"
+New-SmbShare -Name "HR" -Path "C:\Shares\HR" -Description "HR Department Share"
+New-SmbShare -Name "Finance" -Path "C:\Shares\Finance" -Description "Finance Department Share"
+New-SmbShare -Name "Management" -Path "C:\Shares\Management" -Description "Management Department Share"
+
+# Set NTFS Permissions
+$acl = Get-Acl "C:\Shares\IT"
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule("RAMINDER\IT-Team","FullControl","ContainerInherit,ObjectInherit","None","Allow")
+$acl.SetAccessRule($rule)
+Set-Acl "C:\Shares\IT" $acl
+
+# Set Share Permissions
+Grant-SmbShareAccess -Name "IT" -AccountName "RAMINDER\IT-Team" -AccessRight Full -Force
+Grant-SmbShareAccess -Name "HR" -AccountName "RAMINDER\HR-Team" -AccessRight Full -Force
+Grant-SmbShareAccess -Name "Finance" -AccountName "RAMINDER\Finance-Team" -AccessRight Full -Force
+Grant-SmbShareAccess -Name "Management" -AccountName "RAMINDER\Management-Team" -AccessRight Full -Force
 ```
 
 ---
@@ -225,6 +269,9 @@ Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -Client
 | 17 | ![DHCP IPConfig](screenshots/17-DHCP-Win10-IPConfig.png) | Windows 10 DHCP lease confirmed |
 | 18 | ![DHCP Lease](screenshots/18-DHCP-Active-Lease.png) | Active DHCP lease in DHCP Manager |
 | 19 | ![DHCP Reservation](screenshots/19-DHCP-Reservation.png) | DHCP reservation for Win10 client |
+| 20 | ![File Share Access](screenshots/20-FileServer-IT-Share-Access.png) | jsmith accessing IT share |
+| 21 | ![Shares List](screenshots/21-FileServer-Shares-List.png) | All shares in Server Manager |
+| 22 | ![NTFS Permissions](screenshots/22-FileServer-NTFS-Permissions.png) | NTFS permissions on IT folder |
 
 ---
 
@@ -232,6 +279,7 @@ Add-DhcpServerv4Reservation -ScopeId 192.168.1.0 -IPAddress 192.168.1.20 -Client
 - [Server Academy](https://www.serveracademy.com/)
 - [Microsoft Docs — AD DS](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/get-started/virtual-dc/active-directory-domain-services-overview)
 - [Microsoft Docs — DHCP](https://docs.microsoft.com/en-us/windows-server/networking/technologies/dhcp/dhcp-top)
+- [Microsoft Docs — File Server](https://docs.microsoft.com/en-us/windows-server/storage/fsrm/fsrm-overview)
 
 ---
 
